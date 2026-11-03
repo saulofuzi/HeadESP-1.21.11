@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "headesp",
+  "version": "${version}",
+  "name": "Head ESP",
+  "description": "Destaca cabeças de jogadores em vermelho e desmarca ao clicar.",
+  "authors": ["HeadESP"],
+  "environment": "client",
+  "entrypoints": { "client": ["br.com.headesp.HeadEspClient"] },
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
