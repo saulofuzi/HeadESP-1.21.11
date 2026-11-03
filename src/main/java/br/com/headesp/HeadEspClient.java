@@ -24,8 +24,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class HeadEspClient implements ClientModInitializer {
-    private static final int RADIUS = 32;
-    private static final int MAX_VERTICAL = 20;
+    private static final int RADIUS = 128;
+    private static final int MAX_VERTICAL = 32;
     private static final Set<BlockPos> VISIBLE = new HashSet<>();
     private static final Set<BlockPos> IGNORED = new HashSet<>();
     private static Level lastLevel;
@@ -82,7 +82,7 @@ public final class HeadEspClient implements ClientModInitializer {
                         pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
                         pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
                     );
-                    Gizmos.cuboid(box, GizmoStyle.stroke(0xFFFF0D0D, 2.0f));
+                    Gizmos.cuboid(box, GizmoStyle.stroke(0xFFFF0D0D, 2.0f)).setAlwaysOnTop();
                 }
             }
         });
