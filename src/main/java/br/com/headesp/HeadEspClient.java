@@ -1,6 +1,5 @@
 package br.com.headesp;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -10,8 +9,6 @@ import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -20,6 +17,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.gizmos.GizmoStyle;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -76,22 +75,16 @@ public final class HeadEspClient implements ClientModInitializer {
         WorldRenderEvents.AFTER_ENTITIES.register(context -> {
             Minecraft mc = Minecraft.getInstance();
             if (!enabled || mc.level == null || VISIBLE.isEmpty()) return;
-            PoseStack poses = context.matrices();
-            if (poses == null || context.consumers() == null) return;
-            Vec3 cam = mc.gameRenderer.getMainCamera().position();
-            var lines = context.consumers().getBuffer(RenderTypes.LINES);
-            poses.pushPose();
-            poses.translate(-cam.x, -cam.y, -cam.z);
-            for (BlockPos pos : VISIBLE) {
-                if (IGNORED.contains(pos)) continue;
-                LevelRenderer.renderLineBox(poses, lines,
-                    new AABB(
+            try (var ignored = mc.levelRenderer.collectPerFrameGizmos()) {
+                for (BlockPos pos : VISIBLE) {
+                    if (IGNORED.contains(pos)) continue;
+                    AABB box = new AABB(
                         pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
                         pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
-                    ),
-                    1.0f, 0.05f, 0.05f, 1.0f);
+                    );
+                    Gizmos.cuboid(box, GizmoStyle.stroked(0xFFFF0D0D, 2.0f));
+                }
             }
-            poses.popPose();
         });
     }
 
