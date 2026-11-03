@@ -19,6 +19,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.AABB;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -84,8 +85,10 @@ public final class HeadEspClient implements ClientModInitializer {
             for (BlockPos pos : VISIBLE) {
                 if (IGNORED.contains(pos)) continue;
                 LevelRenderer.renderLineBox(poses, lines,
-                    pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
-                    pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755,
+                    new AABB(
+                        pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
+                        pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
+                    ),
                     1.0f, 0.05f, 0.05f, 1.0f);
             }
             poses.popPose();
