@@ -11,7 +11,7 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -77,8 +77,8 @@ public final class HeadEspClient implements ClientModInitializer {
             if (!enabled || mc.level == null || VISIBLE.isEmpty()) return;
             PoseStack poses = context.matrices();
             if (poses == null || context.consumers() == null) return;
-            Vec3 cam = mc.gameRenderer.getMainCamera().getPosition();
-            var lines = context.consumers().getBuffer(RenderType.lines());
+            Vec3 cam = mc.gameRenderer.getMainCamera().position();
+            var lines = context.consumers().getBuffer(RenderTypes.LINES);
             poses.pushPose();
             poses.translate(-cam.x, -cam.y, -cam.z);
             for (BlockPos pos : VISIBLE) {
