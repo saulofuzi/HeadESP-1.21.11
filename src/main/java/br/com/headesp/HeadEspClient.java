@@ -159,7 +159,7 @@ public final class HeadEspClient implements ClientModInitializer {
             processed++;
             if (chunk == null) continue;
 
-            for (BlockPos pos : chunk.getBlockEntities().keySet()) {
+            for (BlockPos pos : chunk.getBlockEntitiesPos()) {
                 long dx = (long) pos.getX() - scanCenter.getX();
                 long dy = (long) pos.getY() - scanCenter.getY();
                 long dz = (long) pos.getZ() - scanCenter.getZ();
