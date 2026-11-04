@@ -1,126 +1,166 @@
 package br.com.headesp;
 
-import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.minecraft.client.KeyMapping;
-import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.gizmos.Gizmos;
-import net.minecraft.gizmos.GizmoStyle;
+import net.minecraft.block.Blocks;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.WorldRenderer;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.world.World;
+import net.minecraft.world.chunk.WorldChunk;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public final class HeadEspClient implements ClientModInitializer {
-    private static final int RADIUS = 128;
+    // O raio não faz o mod procurar chunks que o servidor não enviou.
+    private static final int RADIUS_CHUNKS = 8;
     private static final int MAX_VERTICAL = 32;
+    private static final int SCAN_INTERVAL_TICKS = 20;
     private static final Set<BlockPos> VISIBLE = new HashSet<>();
     private static final Set<BlockPos> IGNORED = new HashSet<>();
-    private static Level lastLevel;
+
+    private static World lastWorld;
     private static boolean enabled = true;
-    private static int ticks = 0;
-    private static KeyMapping toggleKey;
-    private static KeyMapping resetKey;
+    private static int tickCounter;
+    private static KeyBinding toggleKey;
+    private static KeyBinding resetKey;
 
     @Override
     public void onInitializeClient() {
-        KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("headesp", "controls"));
-        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-            "key.headesp.toggle", InputConstants.Type.KEYSYM, InputConstants.KEY_H, category));
-        resetKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-            "key.headesp.reset", InputConstants.Type.KEYSYM, InputConstants.KEY_J, category));
+        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.headesp.toggle", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H, "category.headesp"));
+        resetKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.headesp.reset", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_J, "category.headesp"));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.level != lastLevel) {
-                lastLevel = client.level;
-                IGNORED.clear();
+            if (client.world != lastWorld) {
+                lastWorld = client.world;
                 VISIBLE.clear();
+                IGNORED.clear();
+                tickCounter = 0;
             }
-            while (toggleKey.consumeClick()) {
+
+            while (toggleKey.wasPressed()) {
                 enabled = !enabled;
+                if (!enabled) VISIBLE.clear();
                 notifyPlayer(client, "Head ESP: " + (enabled ? "§aATIVADO" : "§cDESATIVADO"));
             }
-            while (resetKey.consumeClick()) {
+            while (resetKey.wasPressed()) {
                 IGNORED.clear();
                 notifyPlayer(client, "§aCabeças ignoradas restauradas!");
+                tickCounter = SCAN_INTERVAL_TICKS;
             }
-            if (client.level == null || client.player == null || !enabled) {
-                VISIBLE.clear();
-                return;
+
+            if (client.world == null || client.player == null || !enabled) return;
+            if (++tickCounter >= SCAN_INTERVAL_TICKS) {
+                tickCounter = 0;
+                scanLoadedChunks(client);
             }
-            if (++ticks % 12 == 0) scan(client);
         });
 
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
-            if (world.isClientSide()) markIgnored(world, hit.getBlockPos());
-            return InteractionResult.PASS;
+            if (world.isClient) markIgnored(world, hit.getBlockPos());
+            return ActionResult.PASS;
         });
         AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
-            if (world.isClientSide()) markIgnored(world, pos);
-            return InteractionResult.PASS;
+            if (world.isClient) markIgnored(world, pos);
+            return ActionResult.PASS;
         });
 
         WorldRenderEvents.AFTER_ENTITIES.register(context -> {
-            Minecraft mc = Minecraft.getInstance();
-            if (!enabled || mc.level == null || VISIBLE.isEmpty()) return;
-            try (var ignored = mc.levelRenderer.collectPerFrameGizmos()) {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (!enabled || client.world == null || VISIBLE.isEmpty()) return;
+
+            MatrixStack matrices = context.matrixStack();
+            if (matrices == null) return;
+            var camera = context.camera().getPos();
+            VertexConsumerProvider.Immediate consumers =
+                client.getBufferBuilders().getEntityVertexConsumers();
+            VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+
+            matrices.push();
+            matrices.translate(-camera.x, -camera.y, -camera.z);
+            // Renderização sem teste de profundidade: os contornos aparecem através de paredes.
+            RenderSystem.disableDepthTest();
+            try {
                 for (BlockPos pos : VISIBLE) {
-                    if (IGNORED.contains(pos)) continue;
-                    AABB box = new AABB(
+                    Box box = new Box(
                         pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
                         pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
                     );
-                    Gizmos.cuboid(box, GizmoStyle.stroke(0xFFFF0D0D, 2.0f)).setAlwaysOnTop();
+                    WorldRenderer.drawBox(matrices, lines, box, 1.0f, 0.05f, 0.05f, 1.0f);
                 }
+            } finally {
+                consumers.draw(RenderLayer.getLines());
+                RenderSystem.enableDepthTest();
+                matrices.pop();
             }
         });
     }
 
-    private static void notifyPlayer(Minecraft client, String message) {
-        if (client.player != null) client.player.displayClientMessage(Component.literal(message), true);
+    private static void notifyPlayer(MinecraftClient client, String message) {
+        if (client.player != null) client.player.sendMessage(Text.literal(message), true);
     }
 
-    private static boolean isPlayerHead(Level level, BlockPos pos) {
-        var block = level.getBlockState(pos).getBlock();
+    private static boolean isPlayerHead(World world, BlockPos pos) {
+        var block = world.getBlockState(pos).getBlock();
         return block == Blocks.PLAYER_HEAD || block == Blocks.PLAYER_WALL_HEAD;
     }
 
-    private static void markIgnored(Level level, BlockPos pos) {
-        if (!isPlayerHead(level, pos)) return;
-        BlockPos saved = pos.immutable();
+    private static void markIgnored(World world, BlockPos pos) {
+        if (!isPlayerHead(world, pos)) return;
+        BlockPos saved = pos.toImmutable();
         IGNORED.add(saved);
         VISIBLE.remove(saved);
     }
 
-    private static void scan(Minecraft client) {
-        Level level = client.level;
-        if (level == null || client.player == null) return;
-        BlockPos center = client.player.blockPosition();
+    /**
+     * Procura apenas Block Entities dos chunks carregados.
+     * Cabeças de jogador são Skull Block Entities, então não precisamos
+     * percorrer milhões de coordenadas bloco a bloco.
+     */
+    private static void scanLoadedChunks(MinecraftClient client) {
+        if (client.world == null || client.player == null) return;
+        var world = client.world;
+        BlockPos center = client.player.getBlockPos();
+        int centerChunkX = center.getX() >> 4;
+        int centerChunkZ = center.getZ() >> 4;
+        int bottom = Math.max(world.getBottomY(), center.getY() - MAX_VERTICAL);
+        int top = Math.min(world.getTopY() - 1, center.getY() + MAX_VERTICAL);
         Set<BlockPos> found = new HashSet<>();
-        int bottom = Math.max(level.getMinY(), center.getY() - MAX_VERTICAL);
-        int top = Math.min(level.getMaxY() - 1, center.getY() + MAX_VERTICAL);
-        for (int x = center.getX() - RADIUS; x <= center.getX() + RADIUS; x++) {
-            for (int z = center.getZ() - RADIUS; z <= center.getZ() + RADIUS; z++) {
-                if (!level.hasChunk(x >> 4, z >> 4)) continue;
-                BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
-                for (int y = bottom; y <= top; y++) {
-                    p.set(x, y, z);
-                    if (isPlayerHead(level, p) && !IGNORED.contains(p)) found.add(p.immutable());
+
+        for (int cx = centerChunkX - RADIUS_CHUNKS; cx <= centerChunkX + RADIUS_CHUNKS; cx++) {
+            for (int cz = centerChunkZ - RADIUS_CHUNKS; cz <= centerChunkZ + RADIUS_CHUNKS; cz++) {
+                WorldChunk chunk = world.getChunkManager().getWorldChunk(cx, cz);
+                if (chunk == null) continue;
+
+                for (Map.Entry<BlockPos, ?> entry : chunk.getBlockEntities().entrySet()) {
+                    BlockPos pos = entry.getKey();
+                    if (pos.getY() < bottom || pos.getY() > top) continue;
+                    if (IGNORED.contains(pos)) continue;
+                    if (isPlayerHead(world, pos)) found.add(pos.toImmutable());
                 }
             }
         }
+
         VISIBLE.clear();
         VISIBLE.addAll(found);
     }
