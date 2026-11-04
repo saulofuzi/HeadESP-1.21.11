@@ -15,6 +15,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.gizmos.Gizmos;
@@ -60,7 +61,7 @@ public final class HeadEspClient implements ClientModInitializer {
                 VISIBLE.clear();
                 return;
             }
-            if (++ticks % 12 == 0) scan(client);
+            if (++ticks % 20 == 0) scan(client);
         });
 
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
@@ -107,20 +108,46 @@ public final class HeadEspClient implements ClientModInitializer {
     private static void scan(Minecraft client) {
         Level level = client.level;
         if (level == null || client.player == null) return;
+
         BlockPos center = client.player.blockPosition();
+        int minX = center.getX() - RADIUS;
+        int maxX = center.getX() + RADIUS;
+        int minZ = center.getZ() - RADIUS;
+        int maxZ = center.getZ() + RADIUS;
+        int minY = Math.max(level.getMinY(), center.getY() - MAX_VERTICAL);
+        int maxY = Math.min(level.getMaxY() - 1, center.getY() + MAX_VERTICAL);
+
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+
         Set<BlockPos> found = new HashSet<>();
-        int bottom = Math.max(level.getMinY(), center.getY() - MAX_VERTICAL);
-        int top = Math.min(level.getMaxY() - 1, center.getY() + MAX_VERTICAL);
-        for (int x = center.getX() - RADIUS; x <= center.getX() + RADIUS; x++) {
-            for (int z = center.getZ() - RADIUS; z <= center.getZ() + RADIUS; z++) {
-                if (!level.hasChunk(x >> 4, z >> 4)) continue;
-                BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
-                for (int y = bottom; y <= top; y++) {
-                    p.set(x, y, z);
-                    if (isPlayerHead(level, p) && !IGNORED.contains(p)) found.add(p.immutable());
+
+        // Percorre somente block entities dos chunks já carregados.
+        // Isso evita consultar milhões de blocos individualmente.
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                ChunkAccess chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+                if (chunk == null) continue;
+
+                for (BlockPos pos : chunk.getBlockEntities().keySet()) {
+                    int x = pos.getX();
+                    int y = pos.getY();
+                    int z = pos.getZ();
+
+                    if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+                    if (y < minY || y > maxY) continue;
+                    if (IGNORED.contains(pos)) continue;
+
+                    var block = level.getBlockState(pos).getBlock();
+                    if (block == Blocks.PLAYER_HEAD || block == Blocks.PLAYER_WALL_HEAD) {
+                        found.add(pos.immutable());
+                    }
                 }
             }
         }
+
         VISIBLE.clear();
         VISIBLE.addAll(found);
     }
