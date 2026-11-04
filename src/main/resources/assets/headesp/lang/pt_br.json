@@ -1,5 +1,5 @@
 {
-  "key.category.headesp.controls": "Head ESP",
-  "key.headesp.toggle": "Ativar/desativar ESP",
-  "key.headesp.reset": "Restaurar cabeças ignoradas"
+  "key.headesp.toggle": "Ativar/Desativar Head ESP",
+  "key.headesp.reset": "Restaurar cabeças ignoradas",
+  "category.headesp": "Head ESP"
 }
