@@ -21,17 +21,25 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.gizmos.GizmoStyle;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class HeadEspClient implements ClientModInitializer {
     private static final int RADIUS = 128;
-    private static final int MAX_VERTICAL = 32;
+    private static final int CHUNKS_PER_TICK = 16;
+    private static final long RADIUS_SQUARED = (long) RADIUS * RADIUS;
     private static final Set<BlockPos> VISIBLE = new HashSet<>();
     private static final Set<BlockPos> IGNORED = new HashSet<>();
     private static Level lastLevel;
     private static boolean enabled = true;
-    private static int ticks = 0;
+    private static final List<Long> SCAN_CHUNKS = new ArrayList<>();
+    private static final Set<BlockPos> SCAN_RESULTS = new HashSet<>();
+    private static int scanCursor = 0;
+    private static int scanCenterChunkX = Integer.MIN_VALUE;
+    private static int scanCenterChunkZ = Integer.MIN_VALUE;
+    private static BlockPos scanCenter = BlockPos.ZERO;
     private static KeyMapping toggleKey;
     private static KeyMapping resetKey;
 
@@ -48,6 +56,11 @@ public final class HeadEspClient implements ClientModInitializer {
                 lastLevel = client.level;
                 IGNORED.clear();
                 VISIBLE.clear();
+                SCAN_CHUNKS.clear();
+                SCAN_RESULTS.clear();
+                scanCursor = 0;
+                scanCenterChunkX = Integer.MIN_VALUE;
+                scanCenterChunkZ = Integer.MIN_VALUE;
             }
             while (toggleKey.consumeClick()) {
                 enabled = !enabled;
@@ -61,7 +74,7 @@ public final class HeadEspClient implements ClientModInitializer {
                 VISIBLE.clear();
                 return;
             }
-            if (++ticks % 20 == 0) scan(client);
+            scanStep(client);
         });
 
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
@@ -105,50 +118,69 @@ public final class HeadEspClient implements ClientModInitializer {
         VISIBLE.remove(saved);
     }
 
-    private static void scan(Minecraft client) {
+    private static void rebuildScan(BlockPos center) {
+        SCAN_CHUNKS.clear();
+        SCAN_RESULTS.clear();
+        scanCursor = 0;
+        scanCenter = center.immutable();
+
+        int centerChunkX = center.getX() >> 4;
+        int centerChunkZ = center.getZ() >> 4;
+        scanCenterChunkX = centerChunkX;
+        scanCenterChunkZ = centerChunkZ;
+
+        int chunkRadius = (RADIUS + 15) >> 4;
+        for (int x = centerChunkX - chunkRadius; x <= centerChunkX + chunkRadius; x++) {
+            for (int z = centerChunkZ - chunkRadius; z <= centerChunkZ + chunkRadius; z++) {
+                SCAN_CHUNKS.add((((long) x) << 32) | (z & 0xffffffffL));
+            }
+        }
+    }
+
+    private static void scanStep(Minecraft client) {
         Level level = client.level;
         if (level == null || client.player == null) return;
 
-        BlockPos center = client.player.blockPosition();
-        int minX = center.getX() - RADIUS;
-        int maxX = center.getX() + RADIUS;
-        int minZ = center.getZ() - RADIUS;
-        int maxZ = center.getZ() + RADIUS;
-        int minY = Math.max(level.getMinY(), center.getY() - MAX_VERTICAL);
-        int maxY = Math.min(level.getMaxY() - 1, center.getY() + MAX_VERTICAL);
+        BlockPos playerPos = client.player.blockPosition();
+        int playerChunkX = playerPos.getX() >> 4;
+        int playerChunkZ = playerPos.getZ() >> 4;
 
-        int minChunkX = minX >> 4;
-        int maxChunkX = maxX >> 4;
-        int minChunkZ = minZ >> 4;
-        int maxChunkZ = maxZ >> 4;
+        if (playerChunkX != scanCenterChunkX || playerChunkZ != scanCenterChunkZ || SCAN_CHUNKS.isEmpty()) {
+            rebuildScan(playerPos);
+        }
 
-        Set<BlockPos> found = new HashSet<>();
+        int processed = 0;
+        while (scanCursor < SCAN_CHUNKS.size() && processed < CHUNKS_PER_TICK) {
+            long packed = SCAN_CHUNKS.get(scanCursor++);
+            int chunkX = (int) (packed >> 32);
+            int chunkZ = (int) packed;
 
-        // Percorre somente block entities dos chunks já carregados.
-        // Isso evita consultar milhões de blocos individualmente.
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                ChunkAccess chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
-                if (chunk == null) continue;
+            ChunkAccess chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+            processed++;
+            if (chunk == null) continue;
 
-                for (BlockPos pos : chunk.getBlockEntities().keySet()) {
-                    int x = pos.getX();
-                    int y = pos.getY();
-                    int z = pos.getZ();
+            for (BlockPos pos : chunk.getBlockEntities().keySet()) {
+                long dx = (long) pos.getX() - scanCenter.getX();
+                long dy = (long) pos.getY() - scanCenter.getY();
+                long dz = (long) pos.getZ() - scanCenter.getZ();
 
-                    if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
-                    if (y < minY || y > maxY) continue;
-                    if (IGNORED.contains(pos)) continue;
+                if (dx * dx + dy * dy + dz * dz > RADIUS_SQUARED) continue;
+                if (IGNORED.contains(pos)) continue;
 
-                    var block = level.getBlockState(pos).getBlock();
-                    if (block == Blocks.PLAYER_HEAD || block == Blocks.PLAYER_WALL_HEAD) {
-                        found.add(pos.immutable());
-                    }
+                var block = level.getBlockState(pos).getBlock();
+                if (block == Blocks.PLAYER_HEAD || block == Blocks.PLAYER_WALL_HEAD) {
+                    SCAN_RESULTS.add(pos.immutable());
                 }
             }
         }
 
-        VISIBLE.clear();
-        VISIBLE.addAll(found);
+        // Publica o resultado somente quando a varredura inteira termina,
+        // evitando picos de processamento em um único tick.
+        if (scanCursor >= SCAN_CHUNKS.size()) {
+            VISIBLE.clear();
+            VISIBLE.addAll(SCAN_RESULTS);
+            SCAN_RESULTS.clear();
+            scanCursor = 0;
+        }
     }
 }
