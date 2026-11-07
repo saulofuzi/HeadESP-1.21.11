@@ -8,8 +8,8 @@
   "environment": "client",
   "entrypoints": { "client": ["br.com.headesp.HeadEspClient"] },
   "depends": {
-    "fabricloader": ">=0.18.1",
-    "minecraft": "1.21.11",
+    "fabricloader": ">=0.16.10",
+    "minecraft": "1.21.4",
     "java": ">=21",
     "fabric-api": "*"
   }
