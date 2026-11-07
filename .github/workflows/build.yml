@@ -1,7 +1,7 @@
-name: Compilar HeadESP Fabric 1.21.11
+name: Compilar HeadESP Fabric 1.21.4
 on:
   push:
-    branches: [main, master, minecraft-26.2]
+    branches: [minecraft-1.21.4]
   workflow_dispatch:
 jobs:
   build:
@@ -16,12 +16,12 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.2.1'
+          gradle-version: '8.12'
       - name: Compilar
         run: gradle --no-daemon build
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: HeadESP-1.21.11-jar
+          name: HeadESP-1.21.4-jar
           path: build/libs/*.jar
           if-no-files-found: error
