@@ -47,7 +47,7 @@ public final class HeadEspClient implements ClientModInitializer {
         KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("headesp", "controls"));
         toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.headesp.toggle", InputConstants.Type.KEYSYM, InputConstants.KEY_H, category));
-        resetKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+        resetKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.headesp.reset", InputConstants.Type.KEYSYM, InputConstants.KEY_J, category));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
