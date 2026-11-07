@@ -12,6 +12,7 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
 import net.minecraft.client.render.GameRenderer;
+import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
@@ -111,7 +112,7 @@ public final class HeadEspClient implements ClientModInitializer {
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.lineWidth(2.0F);
-            RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+            RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
 
             BufferBuilder buffer = Tessellator.getInstance().begin(
                 VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
