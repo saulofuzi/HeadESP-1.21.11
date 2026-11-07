@@ -77,11 +77,17 @@ public final class HeadEspClient implements ClientModInitializer {
         });
 
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
-            if (world.isClientSide()) markIgnored(world, hit.getBlockPos());
+            if (world.isClientSide() && isPlayerHead(world, hit.getBlockPos())) {
+                markIgnored(world, hit.getBlockPos());
+                return InteractionResult.SUCCESS;
+            }
             return InteractionResult.PASS;
         });
         AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
-            if (world.isClientSide()) markIgnored(world, pos);
+            if (world.isClientSide() && isPlayerHead(world, pos)) {
+                markIgnored(world, pos);
+                return InteractionResult.SUCCESS;
+            }
             return InteractionResult.PASS;
         });
 
