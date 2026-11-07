@@ -3,8 +3,8 @@ package br.com.headesp;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.KeyMapping;
@@ -45,7 +45,7 @@ public final class HeadEspClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("headesp", "controls"));
-        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+        toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.headesp.toggle", InputConstants.Type.KEYSYM, InputConstants.KEY_H, category));
         resetKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.headesp.reset", InputConstants.Type.KEYSYM, InputConstants.KEY_J, category));
@@ -85,24 +85,22 @@ public final class HeadEspClient implements ClientModInitializer {
             return InteractionResult.PASS;
         });
 
-        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
+        LevelRenderEvents.BEFORE_GIZMOS.register(context -> {
             Minecraft mc = Minecraft.getInstance();
             if (!enabled || mc.level == null || VISIBLE.isEmpty()) return;
-            try (var ignored = mc.levelRenderer.collectPerFrameRenderThreadGizmos()) {
-                for (BlockPos pos : VISIBLE) {
-                    if (IGNORED.contains(pos)) continue;
-                    AABB box = new AABB(
-                        pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
-                        pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
-                    );
-                    Gizmos.cuboid(box, GizmoStyle.stroke(0xFFFF0D0D, 2.0f)).setAlwaysOnTop();
-                }
+            for (BlockPos pos : VISIBLE) {
+                if (IGNORED.contains(pos)) continue;
+                AABB box = new AABB(
+                    pos.getX() + 0.245, pos.getY() + 0.245, pos.getZ() + 0.245,
+                    pos.getX() + 0.755, pos.getY() + 0.755, pos.getZ() + 0.755
+                );
+                Gizmos.cuboid(box, GizmoStyle.stroke(0xFFFF0D0D, 2.0f)).setAlwaysOnTop();
             }
         });
     }
 
     private static void notifyPlayer(Minecraft client, String message) {
-        if (client.player != null) client.player.displayClientMessage(Component.literal(message), true);
+        if (client.player != null) client.gui.hud.setOverlayMessage(Component.literal(message), false);
     }
 
     private static boolean isPlayerHead(Level level, BlockPos pos) {
