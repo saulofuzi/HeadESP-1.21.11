@@ -25,3 +25,5 @@ jobs:
           name: HeadESP-1.21.4-jar
           path: build/libs/*.jar
           if-no-files-found: error
+
+# Rebuild trigger for the corrected 1.21.4 shader API.
