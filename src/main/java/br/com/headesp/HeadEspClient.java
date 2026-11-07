@@ -89,7 +89,7 @@ public final class HeadEspClient implements ClientModInitializer {
         WorldRenderEvents.AFTER_ENTITIES.register(context -> {
             Minecraft mc = Minecraft.getInstance();
             if (!enabled || mc.level == null || VISIBLE.isEmpty()) return;
-            try (var ignored = mc.levelRenderer.collectPerFrameGizmos()) {
+            try (var ignored = mc.levelRenderer.collectPerFrameRenderThreadGizmos()) {
                 for (BlockPos pos : VISIBLE) {
                     if (IGNORED.contains(pos)) continue;
                     AABB box = new AABB(
